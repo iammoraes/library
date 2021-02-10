@@ -42,8 +42,11 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Observer
+import com.bumptech.glide.Glide
 import com.raywenderlich.android.majesticreader.R
 import com.raywenderlich.android.majesticreader.domain.document.Document
+import com.raywenderlich.android.majesticreader.ui.library.DocumentsAdapter
+import com.raywenderlich.android.majesticreader.util.INVALID_CONTEXT
 import com.raywenderlich.android.majesticreader.util.IntentUtil
 import com.raywenderlich.android.majesticreader.util.READ_REQUEST_CODE
 import kotlinx.android.synthetic.main.fragment_reader.*
@@ -58,6 +61,12 @@ class ReaderFragment : Fragment() {
         }
     }
 
+    private val adapter by lazy {
+        BookmarksAdapter {
+            viewModel.openBookmark(it)
+        }
+    }
+
     private val viewModel: ReaderViewModel by viewModel()
 
 
@@ -66,49 +75,73 @@ class ReaderFragment : Fragment() {
         return inflater.inflate(R.layout.fragment_reader, container, false)
     }
 
-    override fun onActivityCreated(savedInstanceState: Bundle?) {
-        super.onActivityCreated(savedInstanceState)
-        val adapter = BookmarksAdapter {
-            viewModel.openBookmark(it)
-        }
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
         bookmarksRecyclerView.adapter = adapter
+        openIntent()
+        updateMark()
+        isMarked()
+        isInLibrary()
+        setupPage()
+        loadArgument(savedInstanceState)
+        setupClick()
+    }
 
-        viewModel.document.observe(this, Observer {
-            if (it == Document.EMPTY) {
-                // Show file picker action.
-                startActivityForResult(IntentUtil.createOpenIntent(), READ_REQUEST_CODE)
-            }
-        })
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode == READ_REQUEST_CODE && resultCode == Activity.RESULT_OK) {
+            data?.data?.also { uri -> viewModel.openDocument(uri) }
+        } else {
+            super.onActivityResult(requestCode, resultCode, data)
+        }
+    }
 
-        viewModel.bookmarks.observe(this, Observer {
-            adapter.update(it)
-        })
-
-        viewModel.isBookmarked.observe(this, Observer {
-            val bookmarkDrawable = if (it) R.drawable.ic_bookmark else R.drawable.ic_bookmark_border
-            tabBookmark.setCompoundDrawablesWithIntrinsicBounds(0, bookmarkDrawable, 0, 0)
-        })
-
-        viewModel.isInLibrary.observe(this, Observer {
-            val libraryDrawable = if (it) R.drawable.ic_library else R.drawable.ic_library_border
-            tabLibrary.setCompoundDrawablesRelativeWithIntrinsicBounds(0, libraryDrawable, 0, 0)
-        })
-
-        viewModel.currentPage.observe(this, Observer { showPage(it) })
-        viewModel.hasNextPage.observe(this, Observer { tabNextPage.isEnabled = it })
-        viewModel.hasPreviousPage.observe(this, Observer { tabPreviousPage.isEnabled = it })
-
+    private fun loadArgument(savedInstanceState: Bundle?) {
         if (savedInstanceState == null) {
             viewModel.loadArguments(arguments)
         } else {
-            // Recreating fragment after configuration change, reopen current page so it can be rendered again.
             viewModel.reopenPage()
         }
+    }
 
+    private fun setupClick() {
         tabBookmark.setOnClickListener { viewModel.toggleBookmark() }
         tabLibrary.setOnClickListener { viewModel.toggleInLibrary() }
         tabNextPage.setOnClickListener { viewModel.nextPage() }
         tabPreviousPage.setOnClickListener { viewModel.previousPage() }
+    }
+
+    private fun setupPage() {
+        viewModel.currentPage.observe(this, Observer { showPage(it) })
+        viewModel.hasNextPage.observe(this, Observer { tabNextPage.isEnabled = it })
+        viewModel.hasPreviousPage.observe(this, Observer { tabPreviousPage.isEnabled = it })
+    }
+
+    private fun updateMark() {
+        viewModel.bookmarks.observe(this, Observer {
+            adapter.update(it)
+        })
+    }
+
+    private fun openIntent() {
+        viewModel.document.observe(this, Observer {
+            if (it == Document.EMPTY) {
+                startActivityForResult(IntentUtil.createOpenIntent(), READ_REQUEST_CODE)
+            }
+        })
+    }
+
+    private fun isInLibrary() {
+        viewModel.isInLibrary.observe(this, Observer {
+            val libraryDrawable = if (it) R.drawable.ic_library else R.drawable.ic_library_border
+            tabLibrary.setCompoundDrawablesRelativeWithIntrinsicBounds(0, libraryDrawable, 0, 0)
+        })
+    }
+
+    private fun isMarked() {
+        viewModel.isBookmarked.observe(this, Observer {
+            val bookmarkDrawable = if (it) R.drawable.ic_bookmark else R.drawable.ic_bookmark_border
+            tabBookmark.setCompoundDrawablesWithIntrinsicBounds(0, bookmarkDrawable, 0, 0)
+        })
     }
 
     private fun showPage(page: PdfRenderer.Page) {
@@ -142,14 +175,6 @@ class ReaderFragment : Fragment() {
         )
 
         page.close()
-    }
-
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        if (requestCode == READ_REQUEST_CODE && resultCode == Activity.RESULT_OK) {
-            data?.data?.also { uri -> viewModel.openDocument(uri) }
-        } else {
-            super.onActivityResult(requestCode, resultCode, data)
-        }
     }
 
 }
